@@ -102,3 +102,17 @@ TODO
 | `ansible-role-template` | Canonical scaffolding for new role repos |
 | `docker-configs` | Molecule test containers per distro |
 | `linux-configs` | Linux utilities that often can be useful in Ansible roles |
+
+## License
+
+[MIT](./LICENSE)
+
+## Author Information
+
+[straysheep-dev](https://github.com/straysheep-dev/)
+
+> [!NOTE]
+> **AI-assisted Authorship**
+>
+> The following models and tools were used for drafts, examples, or research:
+> - [Claude (`claude-sonnet-4.6`, `claude-opus-4.8`, `claude-fable-5`) via web and Claude Code](https://claude.com/product/overview)
