@@ -1,0 +1,59 @@
+{
+  "model": "claude-sonnet-4-6",
+  "effortLevel": "high",
+  "cleanupPeriodDays": 7,
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "WebSearch",
+      "WebFetch",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(gh:*)",
+      "Bash(su:*)",
+      "Bash(sudo:*)",
+      "Bash(sudo-rs:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(git submodule:*)",
+      "Bash(ansible-galaxy install:*)",
+      "Bash(packer plugins install:*)",
+      "Bash(pip install:*)",
+      "Bash(pipx install:*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/sops/**)"
+    ],
+    "allow": [
+      "Bash(ansible-lint:*)",
+      "Bash(yamllint:*)",
+      "Bash(shellcheck:*)",
+      "Bash(packer fmt:*)",
+      "Bash(packer validate:*)",
+      "Bash(molecule test:*)",
+      "Bash(molecule converge:*)",
+      "Bash(molecule verify:*)",
+      "Bash(molecule destroy:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git format-patch:*)"
+    ],
+    "ask": [
+      "Bash(docker:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)"
+    ]
+  }
+}
