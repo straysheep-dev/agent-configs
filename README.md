@@ -97,11 +97,11 @@ TODO
 
 | Repo | Role |
 |------|------|
-| `packer-configs` | Packer templates (HCL2); primary mono repo root |
-| `ansible-configs` | Ansible mono repo; consumed as submodule by packer-configs |
-| `ansible-role-template` | Canonical scaffolding for new role repos |
-| `docker-configs` | Molecule test containers per distro |
-| `linux-configs` | Linux utilities that often can be useful in Ansible roles |
+| [`packer-configs`](https://github.com/straysheep-dev/packer-configs) | Packer templates (HCL2); primary mono repo root |
+| [`ansible-configs`](https://github.com/straysheep-dev/ansible-configs) | Ansible mono repo; consumed as submodule by packer-configs |
+| [`ansible-role-template`](https://github.com/straysheep-dev/ansible-role-template) | Canonical scaffolding for new role repos |
+| [`docker-configs`](https://github.com/straysheep-dev/docker-configs) | Molecule test containers per distro |
+| [`linux-configs`](https://github.com/straysheep-dev/linux-configs) | Linux utilities that often are useful in Ansible roles |
 
 ## License
 
@@ -110,6 +110,12 @@ TODO
 ## Author Information
 
 [straysheep-dev](https://github.com/straysheep-dev/)
+
+Credit to the following sources for the ideas put into motion here for my own codebase:
+
+- [BHIS: AI Security Ops](https://aisecurityops.transistor.fm/)
+- [Anthropic Agent Harness](https://www.anthropic.com/engineering/harness-design-long-running-apps)
+- [Daniel Miessler](https://danielmiessler.com/blog/)
 
 > [!NOTE]
 > **AI-assisted Authorship**
