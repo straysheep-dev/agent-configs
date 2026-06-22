@@ -8,7 +8,7 @@ MODEL GUIDANCE
 
 CLAUDE.md cannot control model switching at runtime, the operator must do this.
 
-Default: Sonnet (set in ~/.claude/settings.json on the harness VM or instance)
+Default: Sonnet (set in the settings.json on the harness VM or instance)
 Override manually with --model if needed:
 - Haiku: single-file edits, lint fixes, changelog fragments
 - Sonnet: cross-file work, role scaffolding, multi-task sessions

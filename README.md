@@ -27,7 +27,7 @@ The idea here is use agents to solve problems, and turn the solutions into repea
 
 ## How it works
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) cascades `CLAUDE.md` files upward from the working directory. Placing a single file at `~/src/CLAUDE.md` means every repo under `~/src/` inherits these rules automatically.
+[Claude Code](https://code.claude.com/docs/en/overview) cascades `CLAUDE.md` files upward from the working directory. Placing a single file at `~/src/CLAUDE.md` means every repo under `~/src/` inherits these rules automatically.
 
 Per-repo `CLAUDE.md` files contain **deltas only**. They extend or override specific rules for that repo without duplicating global policy. Each one opens with a comment flagging its relationship to this file:
 
@@ -48,9 +48,7 @@ cd agent-configs
 bash ./bootstrap.sh
 ```
 
-`SESSION.md` and `TODO.md` are placeholders in this repo. On a fresh harness, symlink or copy them the same way so the agent always finds them at `~/src/SESSION.md` and `~/src/TODO.md`.
-
-If you use Option B, add a provisioning step to re-copy on changes so deployed files don't drift from the repo.
+`SESSION.md` and `TODO.md` are placeholders in this repo. `bootstrap.sh` will not overwrite any files it finds that already exist. That should be done intentionally by the operator.
 
 ### Claude Code settings.json
 
