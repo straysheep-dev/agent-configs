@@ -1,5 +1,7 @@
 # agent-configs
 
+![shellcheck workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/shellcheck.yml/badge.svg) ![yaml workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/yaml.yml/badge.svg) ![json workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/json.yml/badge.svg)
+
 Agent configuration files to document and bootstrap workflows based on my existing codebase.
 
 ## What's here

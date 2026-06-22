@@ -1,0 +1,32 @@
+# .github/workflows/json.yml
+
+# Built from the following examples:
+# - https://www.shellcheck.net/wiki/GitHub-Actions
+# - https://www.shellcheck.net/wiki/SC2013
+# - https://github.com/geerlingguy/ansible-role-docker/blob/master/.github/workflows/ci.yml
+
+name: json
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+jobs:
+  lint:
+    name: Lint JSON files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install jq
+        run: sudo apt update; sudo apt install -y jq
+      - name: Process files
+        run: |
+          find . -type f -name "*.json" | while IFS= read -r file
+          do
+              echo "[*]Parsing $file"
+              if ! jq '.' "$file" >/dev/null
+              then
+                  echo "[-]Error processing $file"
+                  break
+              fi
+          done
