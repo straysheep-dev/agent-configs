@@ -5,7 +5,27 @@
   "env": {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "api.anthropic.com"
+      ],
+      "allowManagedDomainsOnly": true
+    },
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh/",
+        "~/.gnupg/",
+        "~/.aws/",
+        "~/.config/sops/"
+      ]
+    }
+  },
   "permissions": {
+    "allowManagedPermissionRulesOnly": true,
     "disableBypassPermissionsMode": "disable",
     "deny": [
       "WebSearch",

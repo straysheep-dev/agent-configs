@@ -8,8 +8,8 @@ Agent configuration files to document and bootstrap workflows based on my existi
 |-----------------|---------|
 | `CLAUDE.md` | Global policy file governing Claude Code behavior across the entire source tree |
 | `SESSION.md` | Running session notes and summaries from agent work; updated by the agent at the end of each session |
-| `TODO.md` | Tracked open items and build-time debt; state that belongs out of `CLAUDE.md` |
-| `outbox/` | Session handoff: format-patch series + apply scripts for automation without agents |
+| `TODO.md` | Tracked open items and build-time debt; state is separate from `CLAUDE.md` |
+| `outbox/` | Session handoff: format-patch series + scripting for automation without agents |
 
 ### SESSION.md
 
@@ -27,27 +27,23 @@ The idea here is use agents to solve problems, and turn the solutions into repea
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) cascades `CLAUDE.md` files upward from the working directory. Placing a single file at `~/src/CLAUDE.md` means every repo under `~/src/` inherits these rules automatically.
 
-Per-repo `CLAUDE.md` files contain **deltas only** - they extend or override specific rules for that repo without duplicating global policy. Each one opens with a comment flagging its relationship to this file:
+Per-repo `CLAUDE.md` files contain **deltas only**. They extend or override specific rules for that repo without duplicating global policy. Each one opens with a comment flagging its relationship to this file:
 
 ```html
-<!-- Extends ~/src/CLAUDE.md. Designed to work with the global policy but functional standalone. -->
+<!-- Extends ~/src/CLAUDE.md. Designed to work with the global policy but can function on its own. -->
 ```
 
 Patterns, reusable task snippets, and role-specific documentation live in `docs/patterns/` inside the relevant downstream repo (e.g. `ansible-configs/docs/patterns/`), not here. This keeps context scoped to where it's actually used and avoids unnecessary token cost in unrelated sessions.
 
 ## Bootstrap a new harness VM
 
-Clone this repo alongside your other source repos and symlink or copy the policy file into place:
+Clone this repo alongside your other source repos and run the initial setup script:
 
 ```bash
-cd ~/src
-git clone git@github.com:<you>/agent-configs.git
-
-# Option A - symlink (edits stay in the repo)
-ln -s ~/src/agent-configs/CLAUDE.md ~/src/CLAUDE.md
-
-# Option B - copy (if the harness environment restricts symlinks)
-cp ~/src/agent-configs/CLAUDE.md ~/src/CLAUDE.md
+mkdir ~/src && cd ~/src
+git clone git@github.com:straysheep-dev/agent-configs.git
+cd agent-configs
+bash ./bootstrap.sh
 ```
 
 `SESSION.md` and `TODO.md` are placeholders in this repo. On a fresh harness, symlink or copy them the same way so the agent always finds them at `~/src/SESSION.md` and `~/src/TODO.md`.
@@ -58,7 +54,7 @@ If you use Option B, add a provisioning step to re-copy on changes so deployed f
 
 <https://code.claude.com/docs/en/settings>
 
-The runtime configuration file for Claude Code - controls permissions (`allow`/`deny`/`ask`), model, effort level, env vars, and hooks. Distinct from `CLAUDE.md`: if `CLAUDE.md` is what the agent *reads*, `settings.json` is what shapes how the *harness runs*.
+The runtime configuration file for Claude Code - controls permissions (`allow`/`deny`/`ask`), model, effort level, env vars, and hooks. Distinct from `CLAUDE.md`: if `CLAUDE.md` is what the agent *reads*, `settings.json` is what shapes *how* the harness runs.
 
 **Scope hierarchy (first match wins for most keys)**
 
@@ -73,7 +69,7 @@ Priority: `Managed > CLI args > Local > Project > User`
 
 **Exception - permissions**: permission rules *merge* across scopes rather than override. A `deny` in user settings survives even if a project adds an `allow`. Deny is always evaluated first.
 
-**For this setup**: `~/.claude/settings.json` on the harness VM. Applies across all repos under `~/src/` without being committed anywhere.
+**For this setup**: `/etc/claude-code/managed-settings.json` on the harness VM. Applies across all use of `claude` without being committed anywhere.
 
 **Where it does not go**
 
@@ -87,7 +83,7 @@ Priority: `Managed > CLI args > Local > Project > User`
 
 **`model` does not hot-reload.** Most keys reload on file save mid-session. `model` is read once at session start - change it with `/model` or restart.
 
-**`allowManagedPermissionRulesOnly`** locks the permissions block so only rules in `managed-settings.json` apply - user and project `allow`/`ask`/`deny` rules are ignored entirely. It only takes effect in managed scope (`/etc/claude-code/managed-settings.json`), so using it requires the bootstrap playbook to place a second file with root access alongside the user settings. It's a lock-down step for after your allowlist is stable, not a starting point. For a single-operator harness, the deny rules in `~/.claude/settings.json` plus the CLAUDE.md prohibition on the agent touching settings files covers the same threat.
+**`allowManagedPermissionRulesOnly`** locks the permissions block so only rules in `managed-settings.json` apply - user and project `allow`/`ask`/`deny` rules are ignored entirely. It only takes effect in managed scope (`/etc/claude-code/managed-settings.json`), so using it requires the bootstrap playbook to place a second file with root access alongside the user settings. It's a lock-down step for after your allowlist is stable, not a starting point. For a single-operator harness, the deny rules in `~/.claude/settings.json` plus the CLAUDE.md prohibition on the agent touching settings files covers the same threat, but we'll still use `/etc/claude-code/managed-settings.json`.
 
 ### Ansible provisioning
 
@@ -114,11 +110,18 @@ TODO
 Credit to the following sources for the ideas put into motion here for my own codebase:
 
 - [BHIS: AI Security Ops](https://aisecurityops.transistor.fm/)
-- [Anthropic Agent Harness](https://www.anthropic.com/engineering/harness-design-long-running-apps)
+- [Anthropic Agent Harness Design](https://www.anthropic.com/engineering/harness-design-long-running-apps)
 - [Daniel Miessler](https://danielmiessler.com/blog/)
 
 > [!NOTE]
 > **AI-assisted Authorship**
 >
-> The following models and tools were used for drafts, examples, or research:
-> - [Claude (`claude-sonnet-4.6`, `claude-opus-4.8`, `claude-fable-5`) via web and Claude Code](https://claude.com/product/overview)
+> This project adheres to the [Linux Kernel developer guidance on using AI coding assistants](https://docs.kernel.org/process/coding-assistants.html).
+>
+> Assisted-by: Claude:claude-fable-5
+>
+> Assisted-by: Claude:claude-opus-4-8
+>
+> Assisted-by: Claude:claude-sonnet-4-6
+>
+> The models above were used for drafts, examples, or research via Claude Code and the web interface.
