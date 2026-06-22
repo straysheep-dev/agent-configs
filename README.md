@@ -56,6 +56,9 @@ bash ./bootstrap.sh
 
 The runtime configuration file for Claude Code - controls permissions (`allow`/`deny`/`ask`), model, effort level, env vars, and hooks. Distinct from `CLAUDE.md`: if `CLAUDE.md` is what the agent *reads*, `settings.json` is what shapes *how* the harness runs.
 
+> [!IMPORTANT]
+> Commands denied / allowed in `"permissions": {}` can be bypassed, the actual guardrails are enforced under `"sandbox": {}` and these three permission block keys: `"allowManagedPermissionRulesOnly": true`, `"allowManagedHooksOnly": true`, `"disableBypassPermissionsMode": "disable"`.
+
 **Scope hierarchy (first match wins for most keys)**
 
 | Scope | Path | Shared? |

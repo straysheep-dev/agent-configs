@@ -21,11 +21,26 @@
         "~/.gnupg/",
         "~/.aws/",
         "~/.config/sops/"
+      ],
+      "denyWrite": [
+        "/etc/claude-code/**",
+        "~/.claude/settings.json",
+        "~/.claude/settings.local.json",
+        "~/.claude.json",
+        "~/.bashrc",
+        "~/.zshrc",
+        "~/.profile",
+        "~/.bash_profile",
+        "/etc/environment",
+        "~/.aws/**",
+        "~/.ssh/**",
+        "~/.gnupg/**"
       ]
     }
   },
   "permissions": {
     "allowManagedPermissionRulesOnly": true,
+    "allowManagedHooksOnly": true,
     "disableBypassPermissionsMode": "disable",
     "deny": [
       "WebSearch",
