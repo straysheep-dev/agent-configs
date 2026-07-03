@@ -17,6 +17,9 @@ Agent configuration files to document and bootstrap workflows based on my existi
 
 The agent appends a short summary here at the end of every session: what changed, what was validated in-sandbox, and what still needs operator review. It acts as a breadcrumb trail across sessions so context isn't rebuilt from scratch each time. Clear or archive it periodically - it's a working document, not a permanent log.
 
+> [!NOTE]
+> It's important this file is only ever updated once per-session, otherwise you undo the benefits of prompt caching.
+
 ### TODO.md
 
 Open items, deferred work, and known build-time debt live here. Keeping state out of `CLAUDE.md` means the policy file stays lean and every agent session isn't burning context re-reading resolved or stale items. The agent checks `TODO.md` at the start of each session to see whether the current task overlaps anything tracked.

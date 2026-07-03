@@ -26,7 +26,7 @@ Per-repo `CLAUDE.md` files extend or override these rules where noted. Per-repo 
 ```
 ~/src/
 ├── CLAUDE.md                     # Global agent policy (this file, deployed from agent-configs repo)
-├── SESSION.md                    # Summary gathered from any broad code or project review
+├── SESSION.md                    # Summary gathered from any broad code or project review, edit only once per-session
 ├── TODO.md                       # Tracked open items and build-time debt (state, not policy)
 ├── outbox/                       # Session handoff: format-patch series + apply scripts for automation without agents
 ├── packer-configs/               # Packer templates (HCL2, JSON)
@@ -207,6 +207,7 @@ A change is complete when:
 - Do not create `group_vars/all` files that would override role defaults silently across unrelated plays.
 - Do not add dependencies to `meta/main.yml` without sharing the suggestion and receiving operator confirmation first.
 - Do not put task state or open items in this file - they go in `TODO.md`.
+- Only edit `SESSION.md` once per-session, otherwise there's likely no effective benefit from prompt caching.
 
 ---
 
