@@ -4,6 +4,7 @@
 
 set -euo pipefail
 
+# shellcheck source=/dev/null
 source ./env.sh
 
 printf "[*] Running Claude (-p) canary test on %s\n" "${FILES_DIR}"

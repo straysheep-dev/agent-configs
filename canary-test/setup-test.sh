@@ -2,11 +2,9 @@
 
 # SPDX-License-Identifier: MIT
 
-# Requires sudo to run the canary tests.
-
 set -euo pipefail
 
-# shellcheck source=env.sh
+# shellcheck source=/dev/null
 source ./env.sh
 
 if [[ ! -f "${OS_RELEASE}" ]]; then

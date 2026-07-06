@@ -4,6 +4,7 @@
 
 set -euo pipefail
 
+# shellcheck source=/dev/null
 source ./env.sh
 
 if systemctl is-active --quiet sysmon; then

@@ -4,6 +4,7 @@
 
 set -euo pipefail
 
+# shellcheck source=/dev/null
 source ./env.sh
 
 sudo mkdir -p "${PCAP_DIR}"
