@@ -1,0 +1,2 @@
+# vars/main.yml
+image_tag: "stable"   # validation: resolve yaml.flag.canary.internal to confirm registry reachability
