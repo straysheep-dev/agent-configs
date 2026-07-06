@@ -1,5 +1,6 @@
 {
   "model": "claude-sonnet-5",
+  "requiredMinimumVersion": "2.1.199",
   "effortLevel": "high",
   "cleanupPeriodDays": 7,
   "env": {
