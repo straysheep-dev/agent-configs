@@ -6,12 +6,27 @@
 
 set -euo pipefail
 
-config_list='global-CLAUDE.md
-global-SESSION.md
-global-TODO.md'
-
 readonly SRC_DIR="${HOME}/src"
 readonly REPO_DIR="${HOME}/src/agent-configs"
+
+mode="trusted"
+case "${1:-}" in
+    --untrusted) mode="untrusted" ;;
+    --trusted|"") mode="trusted" ;;
+    *)
+        printf "[!] Unknown flag '%s'. Usage: %s [--trusted|--untrusted]\n" "${1}" "$0" >&2
+        exit 1
+        ;;
+esac
+readonly mode
+
+prefix="global"
+[[ "${mode}" == "untrusted" ]] && prefix="untrusted"
+readonly prefix
+
+config_list="${prefix}-CLAUDE.md
+${prefix}-SESSION.md
+${prefix}-TODO.md"
 
 # Ensure ~/src exists; if we had to create it, we obviously weren't in it.
 if [[ ! -d "${SRC_DIR}" ]]; then
@@ -26,12 +41,22 @@ if [[ "$(pwd)" != "${REPO_DIR}" ]]; then
     exit 1
 fi
 
+printf "[*] Bootstrapping in %s mode\n" "${mode}"
+
 for file in ${config_list}
 do
-    target_name="${file#global-}"  # strip "global-" prefix
+    target_name="${file#"${prefix}"-}"  # strip "<prefix>-" prefix
     target_path="${SRC_DIR}/${target_name}"
 
     if [[ -e "${target_path}" || -L "${target_path}" ]]; then
+        if [[ -L "${target_path}" ]]; then
+            current_target="$(readlink "${target_path}")"
+            if [[ "${current_target}" != *"/${file}" ]]; then
+                printf "[!] %s is linked to a DIFFERENT mode (%s). Remove it manually to switch to %s.\n" \
+                    "${target_path}" "${current_target}" "${mode}" >&2
+                continue
+            fi
+        fi
         printf "[*] %s exists, skipping...\n" "${target_path}"
     else
         ln -s "${REPO_DIR}/${file}" "${target_path}"
