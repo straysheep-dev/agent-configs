@@ -1,0 +1,229 @@
+{
+  "model": "claude-sonnet-5",
+  "requiredMinimumVersion": "2.1.263",
+  "minimumVersion": "2.1.263",
+  "effortLevel": "high",
+  "cleanupPeriodDays": 7,
+
+  "allowManagedPermissionRulesOnly": true,
+  "allowManagedHooksOnly": true,
+  "allowManagedMcpServersOnly": true,
+  "allowAllClaudeAiMcps": false,
+  "strictKnownMarketplaces": [],
+  "disableCommandPluginSources": true,
+  "disableSideloadFlags": true,
+  "strictPluginOnlyCustomization": {
+    "agents": true,
+    "hooks": true,
+    "mcp": true,
+    "skills": true
+  },
+
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [],
+  "allowedMcpServers": [],
+  "disableSkillShellExecution": true,
+  "disableBundledSkills": false,
+  "crossSessionInbound": "reject",
+  "isolatePeerMachines": true,
+  "respectGitignore": true,
+  "allowedHttpHookUrls": [],
+  "httpHookAllowedEnvVars": [],
+  "skipDangerousModePermissionPrompt": false,
+
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/etc/claude-code/pinned/gitconfig",
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ALLOW_PROTOCOL": "https",
+    "ANSIBLE_CONFIG": "/etc/claude-code/pinned/ansible.cfg",
+    "PYTHONNOUSERSITE": "1",
+    "PIP_REQUIRE_VIRTUALENV": "1",
+    "PATH": "/usr/local/bin:/usr/bin:/bin"
+  },
+
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": false,
+    "enableWeakerNestedSandbox": false,
+    "enableWeakerNetworkIsolation": false,
+    "excludedCommands": [],
+    "network": {
+      "strictAllowlist": true,
+      "allowManagedDomainsOnly": true,
+      "allowedDomains": ["api.anthropic.com"],
+      "deniedDomains": [],
+      "allowAllUnixSockets": false,
+      "allowUnixSockets": [],
+      "allowLocalBinding": false
+    },
+    "credentials": {
+      "envVars": [
+        { "name": "AWS_ACCESS_KEY_ID", "mode": "deny" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "mode": "deny" },
+        { "name": "AWS_SESSION_TOKEN", "mode": "deny" },
+        { "name": "ANSIBLE_VAULT_PASSWORD", "mode": "deny" },
+        { "name": "GITHUB_TOKEN", "mode": "deny" },
+        { "name": "GH_TOKEN", "mode": "deny" },
+        { "name": "VAULT_TOKEN", "mode": "deny" },
+        { "name": "SOPS_AGE_KEY", "mode": "deny" }
+      ],
+      "files": [
+        { "path": "~/.aws/credentials", "mode": "deny" }
+      ]
+    },
+    "filesystem": {
+      "disabled": false,
+      "allowManagedReadPathsOnly": true,
+      "denyRead": [
+        "//**/.ssh/**",
+        "//**/.gnupg/**",
+        "//**/.aws/**",
+        "//**/.azure/**",
+        "//**/.kube/**",
+        "//**/.config/sops/**",
+        "//**/.config/gcloud/**",
+        "//**/.ansible/**",
+        "//**/.env*"
+      ],
+      "denyWrite": [
+        "//**/.ssh/**",
+        "//**/.gnupg/**",
+        "//**/.aws/**",
+        "//**/.azure/**",
+        "//**/.kube/**",
+        "//**/.config/sops/**",
+        "//**/.config/gcloud/**",
+        "//**/.ansible/**",
+        "//**/.env*",
+
+        "//**/.git/**",
+        "//**/.github/workflows/**)",
+        "//**/.gitlab-ci.yml)",
+        "//**/.gitconfig",
+        "//**/.claude/**)",
+        "//**/.claude.json",
+        "//**/.mcp.json)",
+        "//**/ansible.cfg)",
+        "//**/.ansible-lint)",
+
+        "//**/.profile",
+        "//**/.bashrc",
+        "//**/.bash_profile",
+        "//**/.zshrc",
+        "//**/.zshenv",
+        "//**/.zprofile",
+
+        "//**/.local/bin/**",
+        "//**/bin/**",
+        "//**/.local/lib/**",
+        "//**/.config/systemd/user/**",
+        "//**/.config/autostart/**",
+        "/etc/claude-code/**",
+        "/etc/environment",
+        "/etc/profile.d/**"
+      ]
+    }
+  },
+
+  "autoMode": {
+    "classifyAllShell": true
+  },
+
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable",
+    "blockReadsOutsideWorkingDirectories": true,
+    "additionalDirectories": [],
+    "deny": [
+      "Read(//**/.ssh/**)",
+      "Read(//**/.gnupg/**)",
+      "Read(//**/.aws/**)",
+      "Read(//**/.azure/**)",
+      "Read(//**/.kube/**)",
+      "Read(//**/.config/sops/**)",
+      "Read(//**/.config/gcloud/**)",
+      "Read(//**/.ansible/**)",
+      "Read(//**/.env*)",
+
+      "Write(.git/**)",
+      "Edit(.git/**)",
+      "Write(.github/workflows/**)",
+      "Edit(.github/workflows/**)",
+      "Write(.gitlab-ci.yml)",
+      "Edit(.gitlab-ci.yml)",
+      "Write(//**/.claude/**)",
+      "Edit(//**/.claude/**)",
+      "Write(**/.mcp.json)",
+      "Edit(**/.mcp.json)",
+      "Write(**/ansible.cfg)",
+      "Edit(**/ansible.cfg)",
+      "Write(**/.ansible-lint)",
+      "Edit(**/.ansible-lint)",
+
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "Bash(socat:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(gh:*)",
+      "Bash(aws:*)",
+      "Bash(az:*)",
+      "Bash(gcloud:*)",
+      "Bash(kubectl:*)",
+      "Bash(docker:*)",
+      "Bash(podman:*)",
+      "Bash(su:*)",
+      "Bash(sudo:*)",
+      "Bash(sudo-rs:*)",
+      "Bash(doas:*)",
+      "Bash(crontab:*)",
+      "Bash(at:*)",
+      "Bash(systemctl:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(ansible-galaxy:*)",
+      "Bash(packer init:*)",
+      "Bash(packer plugins:*)",
+      "Bash(pip install:*)",
+      "Bash(pipx install:*)"
+    ],
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:docs.ansible.com)",
+      "WebFetch(domain:developer.hashicorp.com)",
+
+      "Bash(ansible-lint:*)",
+      "Bash(yamllint:*)",
+      "Bash(shellcheck:*)",
+      "Bash(packer fmt:*)",
+      "Bash(packer validate:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git format-patch:*)"
+    ],
+    "ask": [
+      "Bash(molecule test:*)",
+      "Bash(molecule converge:*)",
+      "Bash(molecule verify:*)",
+      "Bash(molecule destroy:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)",
+      "Bash(git remote:*)",
+      "Bash(git submodule:*)"
+    ]
+  }
+}
