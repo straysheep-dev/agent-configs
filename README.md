@@ -2,108 +2,57 @@
 
 ![shellcheck workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/shellcheck.yml/badge.svg) ![yaml workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/yaml.yml/badge.svg) ![json workflow](https://github.com/straysheep-dev/agent-configs/actions/workflows/json.yml/badge.svg)
 
-Agent configuration files to document and bootstrap workflows based on my existing codebase.
+Harness-agnostic policy and bootstrap files for running coding agents against my codebase.
 
-## What's here
+## Threat Model
+
+Assume the harness's in-process controls can fail. Permission allow/deny lists, sandbox flags, seccomp/apparmor profiles; these are convenience guardrails maintained by fast-moving tooling, not an isolation boundary. They get bypassed by config bugs, race conditions, kernel/apparmor interaction issues, or scope creep the operator didn't notice.
+
+The actual boundary is the instance where the harness lives, in many cases a VM. Packer-built, monitored, disposable image the agent runs inside of. If the harness's controls hold, that's a bonus. If they don't, the blast radius stops at the VM's network and filesystem. This repo's job is to configure the harness as an additional layer for defense in depth.
+
+This also covers agent authentication. Assume your agent's authentication token can be stolen. Monitor and rotate; additionally the type of authentication that exists within the harness environment should also be limited (e.g. no browser sessions to your Claude web account).
+
+## What's Here
 
 | File / Directory | Purpose |
 |-----------------|---------|
-| `CLAUDE.md` | Global policy file governing Claude Code behavior across the entire source tree |
-| `SESSION.md` | Running session notes and summaries from agent work; updated by the agent at the end of each session |
-| `TODO.md` | Tracked open items and build-time debt; state is separate from `CLAUDE.md` |
-| `outbox/` | Session handoff: format-patch series + scripting for automation without agents |
+| `global-AGENTS.md` | Global policy for a trusted codebase, placed at `~/src/` |
+| `untrusted-AGENTS.md` | Policy for reviewing untrusted codebases |
+| `*-SESSION.md` / `*-TODO.md` | Placeholder handoff files; self-documenting, agent-maintained |
+| `claude-settings.json` | Claude Code managed settings (sandbox required; `bootstrap.sh` applies the Ubuntu 24.04+ AppArmor/bwrap fix first) |
+| `monitor.sh` | Operator's out-of-band egress check for the harness VM |
+| `canary-test/` | Verifies whether the configured boundary actually holds |
+| `outbox/` | Workflow handoff as format-patch series or scripting, for when the harness isn't available |
 
-### SESSION.md
+## How it Works
 
-The agent appends a short summary here at the end of every session: what changed, what was validated in-sandbox, and what still needs operator review. It acts as a breadcrumb trail across sessions so context isn't rebuilt from scratch each time. Clear or archive it periodically - it's a working document, not a permanent log.
+Policy cascades upward from the working directory. A single file at `~/src/AGENTS.md` (`~/src/CLAUDE.md` for Claude Code) means every repo under `~/src/` inherits it. Per-repo files contain **deltas only**, they extend or override, never duplicate.
 
-> [!NOTE]
-> It's important this file is only ever updated once per-session, otherwise you undo the benefits of prompt caching.
-
-### TODO.md
-
-Open items, deferred work, and known build-time debt live here. Keeping state out of `CLAUDE.md` means the policy file stays lean and every agent session isn't burning context re-reading resolved or stale items. The agent checks `TODO.md` at the start of each session to see whether the current task overlaps anything tracked.
-
-### outbox Scripts
-
-The idea here is use agents to solve problems, and turn the solutions into repeatable steps and code that the agent no longer has to invent. In the event the harness breaks, or goes away in the future, all of the existing scaffolding remains.
-
-## How it works
-
-[Claude Code](https://code.claude.com/docs/en/overview) cascades `CLAUDE.md` files upward from the working directory. Placing a single file at `~/src/CLAUDE.md` means every repo under `~/src/` inherits these rules automatically.
-
-Per-repo `CLAUDE.md` files contain **deltas only**. They extend or override specific rules for that repo without duplicating global policy. Each one opens with a comment flagging its relationship to this file:
-
-```html
-<!-- Extends ~/src/CLAUDE.md. Designed to work with the global policy but can function on its own. -->
-```
-
-Patterns, reusable task snippets, and role-specific documentation live in `docs/patterns/` inside the relevant downstream repo (e.g. `ansible-configs/docs/patterns/`), not here. This keeps context scoped to where it's actually used and avoids unnecessary token cost in unrelated sessions.
-
-## Bootstrap a new harness VM
-
-Clone this repo alongside your other source repos and run the initial setup script:
+## Bootstrap a New Harness VM
 
 ```bash
 mkdir ~/src && cd ~/src
-git clone git@github.com:straysheep-dev/agent-configs.git
+if [ ! -e ~/src/agent-configs ]; then
+    git clone git@github.com:straysheep-dev/agent-configs.git
+fi
 cd agent-configs
-bash ./bootstrap.sh
+bash ./bootstrap.sh [--trusted|--untrusted]
 ```
 
-`SESSION.md` and `TODO.md` are placeholders in this repo. `bootstrap.sh` will not overwrite any files it finds that already exist. That should be done intentionally by the operator.
+Defaults: `--trusted`.
 
-### Claude Code settings.json
+`bootstrap.sh` installs `claude-settings.json` as `/etc/claude-code/managed-settings.json`, requiring the sandbox (`failIfUnavailable`). Before that, it checks `kernel.apparmor_restrict_unprivileged_userns` and, if AppArmor is blocking bubblewrap from creating user namespaces (the default on Ubuntu 24.04+), installs the allow profile from the [Claude Code sandboxing docs](https://code.claude.com/docs/en/sandboxing#ubuntu-24-04-and-later-allow-bubblewrap-to-create-user-namespaces) and reloads AppArmor.
 
-<https://code.claude.com/docs/en/settings>
-
-The runtime configuration file for Claude Code - controls permissions (`allow`/`deny`/`ask`), model, effort level, env vars, and hooks. Distinct from `CLAUDE.md`: if `CLAUDE.md` is what the agent *reads*, `settings.json` is what shapes *how* the harness runs.
-
-> [!IMPORTANT]
-> Commands denied / allowed in `"permissions": {}` can be bypassed, the actual guardrails are enforced under `"sandbox": {}` and these three permission block keys: `"allowManagedPermissionRulesOnly": true`, `"allowManagedHooksOnly": true`, `"disableBypassPermissionsMode": "disable"`.
-
-**Scope hierarchy (first match wins for most keys)**
-
-| Scope | Path | Shared? |
-|-------|------|---------|
-| **Managed** | `/etc/claude-code/managed-settings.json` (Linux/WSL) | All users; cannot be overridden |
-| **User** | `~/.claude/settings.json` | You, across all projects |
-| **Project** | `.claude/settings.json` in repo root | All collaborators; committed to git |
-| **Local** | `.claude/settings.local.json` in repo root | You only; gitignored |
-
-Priority: `Managed > CLI args > Local > Project > User`
-
-**Exception - permissions**: permission rules *merge* across scopes rather than override. A `deny` in user settings survives even if a project adds an `allow`. Deny is always evaluated first.
-
-**For this setup**: `/etc/claude-code/managed-settings.json` on the harness VM. Applies across all use of `claude` without being committed anywhere.
-
-**Where it does not go**
-
-- Not in `~/src/` - that's `CLAUDE.md` territory.
-- Not committed to any repo without deliberate intent. A project-level `.claude/settings.json` overrides user settings for non-permission keys and stacks permission rules - a repo that gains one accidentally can silently widen what the agent can do.
-- Not confused with `~/.claude.json` - that file holds OAuth sessions, MCP configs, and per-project trust state. Different file, same directory.
-
-**Key gotchas**
-
-**Environment variables beat `settings.json`** for some keys. `effortLevel: "high"` is ignored if `CLAUDE_CODE_EFFORT_LEVEL` is set in the shell environment. Check `~/.bashrc`, `~/.zshrc`, and `/etc/environment` on the harness VM after bootstrap.
-
-**`model` does not hot-reload.** Most keys reload on file save mid-session. `model` is read once at session start - change it with `/model` or restart.
-
-**`allowManagedPermissionRulesOnly`** locks the permissions block so only rules in `managed-settings.json` apply - user and project `allow`/`ask`/`deny` rules are ignored entirely. It only takes effect in managed scope (`/etc/claude-code/managed-settings.json`), so using it requires the bootstrap playbook to place a second file with root access alongside the user settings. It's a lock-down step for after your allowlist is stable, not a starting point. For a single-operator harness, the deny rules in `~/.claude/settings.json` plus the CLAUDE.md prohibition on the agent touching settings files covers the same threat, but we'll still use `/etc/claude-code/managed-settings.json`.
-
-### Ansible provisioning
-
-TODO
-
-## Related repos
+## Related Repos
 
 | Repo | Role |
 |------|------|
-| [`packer-configs`](https://github.com/straysheep-dev/packer-configs) | Packer templates (HCL2); primary mono repo root |
+| [`packer-configs`](https://github.com/straysheep-dev/packer-configs) | Packer templates (HCL2), the actual sandbox boundary; monitored, disposable |
 | [`ansible-configs`](https://github.com/straysheep-dev/ansible-configs) | Ansible mono repo; consumed as submodule by packer-configs |
 | [`ansible-role-template`](https://github.com/straysheep-dev/ansible-role-template) | Canonical scaffolding for new role repos |
 | [`docker-configs`](https://github.com/straysheep-dev/docker-configs) | Molecule test containers per distro |
-| [`linux-configs`](https://github.com/straysheep-dev/linux-configs) | Linux utilities that often are useful in Ansible roles |
+| [`linux-configs`](https://github.com/straysheep-dev/linux-configs) | Linux utilities useful in Ansible roles |
+| [`windows-configs`](https://github.com/straysheep-dev/windows-configs) | Windows utilities useful in CI/CD and system configuration |
 
 ## License
 
@@ -113,7 +62,7 @@ TODO
 
 [straysheep-dev](https://github.com/straysheep-dev/)
 
-Credit to the following sources for the ideas put into motion here for my own codebase:
+Credit to the following sources for the ideas put into motion here:
 
 - [BHIS: AI Security Ops](https://aisecurityops.transistor.fm/)
 - [Anthropic Agent Harness Design](https://www.anthropic.com/engineering/harness-design-long-running-apps)
@@ -128,6 +77,4 @@ Credit to the following sources for the ideas put into motion here for my own co
 >
 > Assisted-by: Claude:claude-opus-4-8
 >
-> Assisted-by: Claude:claude-sonnet-4-6
->
-> The models above were used for drafts, examples, or research via Claude Code and the web interface.
+> Assisted-by: Claude:claude-sonnet-4-6, claude-sonnet-5
