@@ -1,25 +1,15 @@
-# CLAUDE.md - Infrastructure as Code
+# AGENTS.md - Infrastructure as Code
 
-<!-- VERSION=0.5 -->
+<!-- VERSION=0.6 -->
 <!-- This file is policy, not state. Task state lives in TODO.md; session notes in SESSION.md. -->
 
-<!--
-MODEL GUIDANCE
+This file governs agent behavior across the entire source tree, using the `packer-configs` mono repo as the primary "root" path, where all submodules lead to. There are other mono repos next to this one, that are all downstream in some way, as submodules.
 
-CLAUDE.md cannot control model switching at runtime, the operator must do this.
-
-Default: Sonnet (set in the settings.json on the harness VM or instance)
-Override manually with --model if needed:
-- Haiku: single-file edits, lint fixes, changelog fragments
-- Sonnet: cross-file work, role scaffolding, multi-task sessions
-- Opus: agent harness runs, novel problems, debugging loops
--->
-
-This file governs Claude Code behavior across the entire source tree, using the `packer-configs` mono repo as the primary "root" path, where all submodules lead to. There are other mono repos next to this one, that are all downstream in some way, as submodules.
+The harness deploys this file under whatever name it expects (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, etc.); the content is the same regardless.
 
 All files, including active `SESSION.md` and `TODO.md` files are intended to be published, and should be considered public. The entire codebase is public, and should not contain any secrets.
 
-Per-repo `CLAUDE.md` files extend or override these rules where noted. Per-repo files contain **deltas only** - never copy this global file into a repo.
+Per-repo policy files extend or override these rules where noted. Per-repo files contain **deltas only** - never copy this global file into a repo.
 
 **Directory Map**
 
@@ -45,18 +35,27 @@ Always work on the "root" repo of any component when making changes. For example
 
 ## General Automation Guidance
 
-You do not have access to the `gh` tool, or the ability to write back to GitHub. You're in an isolated sandbox that *can* stage changes and modify git, but in all cases the operator will extract the proposed changes after review and apply them manually. Your goal as the agent is to problem solve and draft the changes. All chores, cleanup items, and other tasks that can be built as code, should be, once they're identified - produce bash or python snippets the operator can run to automate the task out of the agent loop.
+Assume no write path back to the remote: no `gh`, no `git push`, no webhooks or other outbound calls. You *can* stage changes and modify local git history, but in all cases the operator extracts the proposed changes after review and applies them manually. Your job as the agent is to problem solve and draft the changes. All chores, cleanup items, and other tasks that can be built as code, should be, once they're identified - if necessary, produce bash python or PowerShell snippets the operator can run to automate such tasks out of the agent loop where that may be necessary.
 
-### Session Handoff (output contract)
+### Workflow Handoff (output contract)
 
-Every session that produces changes ends with:
+In all cases:
 
-1. One commit (or small logical series) per touched repo, with conventional messages.
-2. `git format-patch` output written to `~/src/outbox/<repo-name>-<topic>-<yyyymmdd>`.
-3. An `apply.sh` in the same directory: the exact `git` (and submodule bump) commands for the operator, in dependency order.
-4. A short summary appended to `SESSION.md`: what changed, what was validated in-sandbox, what still needs operator eyes.
+- Agent runs validation (lint, `packer validate`, Molecule) **before** handoff.
+- A short summary appended to `SESSION.md`: what changed, what was validated locally, what still needs operator eyes.
 
-Validation the agent can run itself (lint, `packer validate`, Molecule) is run **before** handoff. Never hand off unvalidated changes without flagging them as such.
+If a workflow requires substantial reworking of a project, and changes cannot simply be drafted for review:
+
+- If necessary, one commit (or small logical series) per touched repo, with conventional messages.
+- If necessary, `git format-patch` output written to `~/src/outbox/<repo-name>-<topic>-<yyyymmdd>`.
+- If necessary, an `apply.sh` in the same directory: the exact `git` (and submodule bump) commands for the operator to run.
+
+### SESSION.md / TODO.md conventions
+
+- Both are **workflow-scoped**, not per-agent. A workflow may involve several agents (planner, implementer, reviewer) and more than one harness. The operator archives or clears them at workflow end; they are working documents, not a permanent log.
+- Each agent **appends its own dated block** to `SESSION.md` and does not rewrite or delete another agent's block. Keep entries short.
+- Write to `SESSION.md` sparingly - ideally once, near handoff. Repeated rewrites mid-run waste the prompt cache for that agent.
+- `TODO.md` holds open items and build-time debt only. No policy, no narrative.
 
 ## Ansible Conventions
 
@@ -75,20 +74,16 @@ Validation the agent can run itself (lint, `packer validate`, Molecule) is run *
 
 ### Hardening Roles (attack-driven, not benchmark-driven)
 
-Hardening is scoped to controls we can demonstrate an attack against - not blanket benchmark coverage.
-
-- One role per attack surface: `ansible-role-<action>-<surface>` (e.g. `configure-kernel`, `configure-sshd`, `manage-apt`).
-- Each control in the role maps to a documented threat. The role README contains a **threat table**: control > attack it mitigates > evidence (MITRE ATT&CK technique ID, public PoC link, or a pentest note from the operator's research).
+- One role per attack surface: `ansible-role-<action_surface>` (e.g. `configure_kernel`, `configure_sshd`, `configure_firwall`).
 - `molecule/verify.yml` asserts the *control state itself* (sysctl value set, sshd flag present, pam options active) - one assert per control, so the role is its own compliance proof.
-- A control with no demonstrable attack and no evidence entry does not belong in a hardening role. Propose it in the README under "Candidates" for operator review instead.
-- CIS/STIG mappings are optional metadata in the threat table (an export view), never the organizing principle. Do not structure roles or tags around benchmark section numbers.
+- CIS/STIG/MITRE ATT&CK mappings are optional metadata in the threat table of the role's README, never the organizing principle. Do not structure roles or tags around benchmark section numbers.
 - Destructive or lockout-capable controls (firewall default-deny, sshd auth changes, sudoers rewrites) must ship with an escape-hatch variable documented in `defaults/main.yml` and called out in the README.
 
 ### Variables
 
-- All role defaults live in `defaults/main.yml` with inline YAML comments describing each variable. Mirror these in the role's README. These comments are the documentation source.
-- `vars/main.yml` is for internal constants only, never user-facing.
-- Separate list shapes that differ structurally into distinct variables (e.g. `user_list`, `delete_user_list`, `expire_user_list`) to prevent accidental destructive operations from shape mismatches.
+- All role defaults live in `defaults/main.yml` with inline YAML comments describing each variable. Simply noting this file is self documenting in the README is sufficient.
+- `vars/main.yml` is for internal constants only, not intended to be edited by the user.
+- Separate data that differ structurally into distinct variables (e.g. `user_list`, `delete_user_list`, `expire_user_list`) to prevent accidental destructive operations from variable mismatches.
 - Use the `default()` filter instead of the two-task `when: var is defined` / `when: var is not defined` patterns.
 
 ### Task files
@@ -103,7 +98,7 @@ Hardening is scoped to controls we can demonstrate an attack against - not blank
 ### Ansible Lint
 
 - All roles should use a standardized `.ansible-lint` file that comes with the `ansible-role-template` repo.
-- If any changes are worth making per-role, note them for operator review before making them.
+- If any changes are worth making per-role to this file, note them for operator review.
 
 ### Molecule
 
@@ -190,7 +185,7 @@ A change is complete when:
 - Molecule converge + verify + idempotence pass for any touched role (or the gap is flagged in the handoff summary).
 - `defaults/main.yml` comments and the README agree.
 - Hardening roles: threat table updated for any added/changed control.
-- Handoff artifacts exist based on the Session Handoff contract.
+- Handoff artifacts exist based on the Workflow Handoff contract.
 
 ---
 
@@ -207,7 +202,7 @@ A change is complete when:
 - Do not create `group_vars/all` files that would override role defaults silently across unrelated plays.
 - Do not add dependencies to `meta/main.yml` without sharing the suggestion and receiving operator confirmation first.
 - Do not put task state or open items in this file - they go in `TODO.md`.
-- Only edit `SESSION.md` once per-session, otherwise there's likely no effective benefit from prompt caching.
+- Do not rewrite or delete another agent's `SESSION.md` block; append your own. Write to it sparingly (see SESSION.md / TODO.md conventions).
 
 ---
 
