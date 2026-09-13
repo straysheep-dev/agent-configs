@@ -1,13 +1,18 @@
 #!/bin/bash
 
 # SPDX-License-Identifier: MIT
+# Assisted-by: Claude:claude-sonnet-5
 
-# Requires sudo to install the managed-settings.json config.
+# Bootstraps harness-agnostic policy files + Claude Code's runtime config onto a
+# fresh VM. Run from ~/src/agent-configs. Needs sudo for the AppArmor bwrap fix,
+# the Claude Code managed-settings install, and (in --untrusted mode) the
+# analysis toolchain.
 
 # Changelog:
 # - 2026.07.05: First draft of bootstrap.sh
 # - 2026.08.16: Add support for untrusted environments + utility installation
 # - 2026.08.29: Pin python toolchain via uv, exit non-zero on failure
+# - 2026.09.12: Add the Ubuntu 24.04+ AppArmor/bwrap userns fix
 
 set -euo pipefail
 
@@ -15,24 +20,40 @@ failed=0    # Set failure var
 readonly SRC_DIR="${HOME}/src"
 readonly REPO_DIR="${HOME}/src/agent-configs"
 
+usage() {
+    cat >&2 <<'EOF'
+Usage: bootstrap.sh [--trusted|--untrusted]
+
+  --trusted            global policy profile (default): your own repos
+  --untrusted          tool-review profile + static-analysis toolchain
+EOF
+}
+
 mode="trusted"
-case "${1:-}" in
-    --untrusted) mode="untrusted" ;;
-    --trusted|"") mode="trusted" ;;
-    *)
-        printf "[!] Unknown flag '%s'. Usage: %s [--trusted|--untrusted]\n" "${1}" "$0" >&2
-        exit 1
-        ;;
-esac
+
+while [[ $# -gt 0 ]]; do
+    case "${1}" in
+        --trusted)   mode="trusted" ;;
+        --untrusted) mode="untrusted" ;;
+        -h|--help)   usage; exit 0 ;;
+        *)
+            printf "[!] Unknown flag '%s'\n" "${1}" >&2
+            usage
+            exit 1
+            ;;
+    esac
+    shift
+done
 readonly mode
 
 prefix="global"
 [[ "${mode}" == "untrusted" ]] && prefix="untrusted"
 readonly prefix
 
-config_list="${prefix}-CLAUDE.md
-${prefix}-SESSION.md
-${prefix}-TODO.md"
+readonly POLICY_SRC="${prefix}-AGENTS.md"
+
+# SESSION.md / TODO.md keep their names on every harness. Kept in both profiles.
+readonly -a STATE_FILES=("SESSION.md" "TODO.md")
 
 # Ensure ~/src exists; if we had to create it, we obviously weren't in it.
 if [[ ! -d "${SRC_DIR}" ]]; then
@@ -47,45 +68,90 @@ if [[ "$(pwd)" != "${REPO_DIR}" ]]; then
     exit 1
 fi
 
-printf "[*] Bootstrapping in %s mode\n" "${mode}"
+printf "[*] Bootstrapping: mode=%s\n" "${mode}"
 
-for file in ${config_list}
-do
-    target_name="${file#"${prefix}"-}"  # strip "<prefix>-" prefix
-    target_path="${SRC_DIR}/${target_name}"
+# Copy a repo file to ~/src/<dst>, not symlink.
+place_file() {
+    local src="${1}" dst="${2}"
+    local src_path="${REPO_DIR}/${src}"
+    local dst_path="${SRC_DIR}/${dst}"
 
-    if [[ -e "${target_path}" || -L "${target_path}" ]]; then
-        if [[ -L "${target_path}" ]]; then
-            current_target="$(readlink "${target_path}")"
-            if [[ "${current_target}" != *"/${file}" ]]; then
-                printf "[!] %s is linked to a DIFFERENT mode (%s). Remove it manually to switch to %s.\n" \
-                    "${target_path}" "${current_target}" "${mode}" >&2
-                continue
-            fi
-        fi
-        printf "[*] %s exists, skipping...\n" "${target_path}"
-    else
-        ln -s "${REPO_DIR}/${file}" "${target_path}"
-        printf "[*] Symlinking %s -> %s...\n" "${file}" "${target_path}"
+    if [[ ! -f "${src_path}" ]]; then
+        printf "[!] source %s missing, skipping\n" "${src_path}" >&2
+        failed=1
+        return
     fi
+
+    if [[ -e "${dst_path}" ]]; then
+        printf "[*] %s exists, skipping\n" "${dst_path}"
+        return
+    fi
+
+    install -m 0644 "${src_path}" "${dst_path}"
+    printf "[*] Copied %s -> %s\n" "${src}" "${dst_path}"
+}
+
+place_file "${POLICY_SRC}" "CLAUDE.md"
+for state_file in "${STATE_FILES[@]}"; do
+    place_file "${prefix}-${state_file}" "${state_file}"
 done
 
-# Install settings.json as a root-owned, globally managed config.
-# Users can read it, but only root can write it -- changes belong in the repo, not in the dev environment.
+mkdir -p "${SRC_DIR}/outbox"
+printf "[*] Ensured %s exists\n" "${SRC_DIR}/outbox"
+
+# --- Claude Code runtime config -----------------------------------------------
+
 readonly MANAGED_DIR="/etc/claude-code"
 readonly MANAGED_PATH="${MANAGED_DIR}/managed-settings.json"
+readonly BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
-if [[ -f "${REPO_DIR}/settings.json" ]]; then
+# Ubuntu 24.04+ ships an AppArmor policy that blocks bwrap from creating the
+# user namespaces the sandbox needs. See:
+# https://code.claude.com/docs/en/sandboxing#ubuntu-24-04-and-later-allow-bubblewrap-to-create-user-namespaces
+allow_bwrap_userns() {
+    local restricted
+    restricted="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+    [[ "${restricted}" == "1" ]] || return 0
+
+    sudo tee "${BWRAP_PROFILE}" > /dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+EOF
+    sudo systemctl reload apparmor
+    printf "[*] Installed %s, reloaded AppArmor (bwrap can now create user namespaces)\n" "${BWRAP_PROFILE}"
+}
+
+install_claude_settings() {
+    local src="${REPO_DIR}/claude-settings.json"
+
+    if [[ ! -f "${src}" ]]; then
+        printf "[!] %s not found, skipping managed-settings install\n" "${src}" >&2
+        failed=1
+        return
+    fi
+
+    if [[ -e "${MANAGED_PATH}" ]]; then
+        printf "[*] %s exists, skipping\n" "${MANAGED_PATH}"
+        return
+    fi
+
     sudo mkdir -p "${MANAGED_DIR}"
-    sudo install -o root -g root -m 0644 "${REPO_DIR}/settings.json" "${MANAGED_PATH}"
-    printf "[*] Installed %s as a GLOBALLY MANAGED config (root-owned, edit it in the repo, not in this environment)\n" "${MANAGED_PATH}"
-else
-    printf "[!] %s/settings.json not found, skipping managed-settings install\n" "${REPO_DIR}" >&2
-fi
+    sudo install -o root -g root -m 0644 "${src}" "${MANAGED_PATH}"
+    printf "[*] Installed claude-settings.json -> %s (GLOBALLY MANAGED, root-owned; edit it in the repo)\n" \
+        "${MANAGED_PATH}"
+}
 
-# --- Untrusted-mode tool bootstrap -----------------------------------------
-# Pulls the static-analysis toolchain used by untrusted-CLAUDE.md.
-# TODO: replace with Ansible.
+allow_bwrap_userns
+install_claude_settings
+
+# --- Untrusted-mode tool bootstrap -------------------------------------------
+# Pulls the static-analysis toolchain used by untrusted-AGENTS.md.
+# TODO: Replace this entire shell script with Anisble.
 
 # name|url|sha256|kind (bin|gef|tar|zip)|target
 readonly -a ANALYSIS_TOOLS=(
@@ -183,7 +249,7 @@ fetch_analysis_tools_py() {
 }
 
 if [[ "${mode}" == "untrusted" ]]; then
-    sudo apt-get update -y && sudo apt-get install -y curl unzip tar gdb
+    sudo apt-get update -y && sudo apt-get install -y curl unzip tar gdb jq
     fetch_analysis_tools
     fetch_analysis_tools_py
 fi
