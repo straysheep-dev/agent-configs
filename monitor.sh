@@ -10,14 +10,14 @@ set -uo pipefail
 SESSION="netreview"
 PCAP="outbound_all_$(date +%s).pcap"
 FILTER='(tcp or udp or icmp) and not src net (127.0.0.0/8 or 169.254.0.0/16)'
-TCPCONNECT_BIN="$(command -v tcpconnect.bt || echo /usr/share/bpftrace/tools/tcpconnect.bt)"
+TCPCONNECT_BIN="$(command -v tcpconnect.bt || printf '%s\n' /usr/share/bpftrace/tools/tcpconnect.bt)"
 
 tmux kill-session -t "$SESSION" 2>/dev/null
 
 # Pcap capture runs silently in the background
 sudo tcpdump -i any -n -U "$FILTER" -w "$PCAP" > /dev/null 2>&1 &
 TCPDUMP_PID=$!
-echo "tcpdump capturing to $PCAP (pid $TCPDUMP_PID)"
+printf '%s\n' "tcpdump capturing to $PCAP (pid $TCPDUMP_PID)"
 
 # Clean up the background capture when this script exits
 trap 'sudo kill "$TCPDUMP_PID" 2>/dev/null' EXIT
@@ -27,7 +27,7 @@ bpf_available() {
   [[ -x "$TCPCONNECT_BIN" ]] || return 1
 
   local lockdown
-  lockdown="$(cat /sys/kernel/security/lockdown 2>/dev/null || echo "")"
+  lockdown="$(cat /sys/kernel/security/lockdown 2>/dev/null || printf '')"
   # File format: "none [integrity] confidentiality", brackets mark active mode
   if [[ "$lockdown" == *"[confidentiality]"* ]]; then
     return 1
@@ -39,10 +39,10 @@ bpf_available() {
 }
 
 if bpf_available; then
-  echo "bpftrace available, using tcpconnect.bt for live view"
+  printf '%s\n' "bpftrace available, using tcpconnect.bt for live view"
   PANE0_CMD="sudo $TCPCONNECT_BIN"
 else
-  echo "bpftrace unavailable (kernel lockdown/BPF restriction), falling back to tcpdump live decode"
+  printf '%s\n' "bpftrace unavailable (kernel lockdown/BPF restriction), falling back to tcpdump live decode"
   PANE0_CMD="sudo tcpdump -i any -n -tttt -l '$FILTER'"
 fi
 
