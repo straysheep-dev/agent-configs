@@ -1,15 +1,15 @@
-# CLAUDE.md - Untrusted Tool Review
+# AGENTS.md - Untrusted Tool Review
 
-<!-- VERSION=0.1 -->
+<!-- VERSION=0.3 -->
 <!-- Read-only analysis mode. Task state lives in TODO.md; session notes in SESSION.md. -->
 
-This file governs Claude Code behavior when reviewing **pentest tools you did not author** as a first-pass supply-chain and backdoor check before a tool is trusted in a lab, let alone an engagement.
+This file governs agent behavior when reviewing **tools you did not author** as a first-pass supply-chain and backdoor check before a tool is trusted in a lab, let alone an engagement.
 
-**Working assumption:** with `sandbox.enabled: true` and `allowManagedDomainsOnly` egress lockdown, the target code cannot phone home during this session even if it tries. The residual risk this file guards against is *you* being led to trust or later run something that shouldn't be trusted, not the sandbox failing.
+The harness deploys this file under whatever name it expects (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, etc.); the content is the same regardless.
 
 ## General Guidance
 
-**Never execute the target.** No `python setup.py install`, no `make`, no `./configure`, no `pip install -e .`, no running the tool's own test suite, no `ansible-galaxy install` of its dependencies, no `terraform init`/`packer build` against its templates. If understanding a component seems to require running it, that itself is a finding: "requires execution to confirm, see outbox/" not a reason to run it in-session.
+**Never execute the target.** No `python setup.py install`, no `make`, no `./configure`, no `pip install -e .`, no running the tool's own test suite, no `ansible-galaxy install` of its dependencies, no `terraform init`/`packer build` against its templates. If understanding a component seems to require running it, that itself is a finding. So is discovering any binary files without the relevant source. "requires execution to confirm, see outbox/" not a reason to run it in-session.
 
 This includes indirect execution: don't `source` its shell scripts, don't `import` its Python modules, don't let an IDE/linter auto-run a pre-commit hook or `setup.cfg` entry point.
 
@@ -30,7 +30,7 @@ Engagement-readiness is a separate, later, human decision. This pass only answer
 
 Use the following tools as necessary during analysis, only if they will help you conduct a more efficient review.
 
-- `/usr/local/bin/titus` (custom rules at `~/src/tool-configs/titus/*.yaml`)
+- `/usr/local/bin/titus` (custom rules under `~/src/tool-configs/titus/*.yaml` if the operator has provisioned them)
 - `/usr/local/bin/floss`
 - `/usr/local/bin/yr` (yara-x, rules will need to be written and reviewed)
 
@@ -89,6 +89,15 @@ If a finding needs execution to confirm (unpacking an obfuscated blob, tracing a
 - `outbox/<tool-name>-<short-finding-name>.gdb`   # e.g. breakpoint/watch commands for a stripped binary
 
 Each drafted artifact opens with a comment: what it confirms, why it wasn't run here, and what a "confirmed bad" result looks like vs a "false alarm" result.
+
+## SESSION.md / TODO.md
+
+The findings document and the `outbox/` drafts are the real output of this pass. `SESSION.md` is only a breadcrumb across multiple review passes of the same tool (what was covered, what was deferred, what the operator still needs to verify out-of-band). Append a dated block, do not rewrite another agent's. `TODO.md` tracks deferred review items, nothing else. Neither file is a substitute for the findings document.
+
+## Before you start
+
+- If `${HOME}/src/sast-review-$(date +%F)` exists, review it first - a prior pass on this tool may have already covered ground, deferred items, or found something worth not repeating.
+- If the tool's purpose, provenance, or scope of review is unclear, ask rather than guess; record what's missing in the findings document rather than proceeding on an assumption.
 
 ## What not to do
 
