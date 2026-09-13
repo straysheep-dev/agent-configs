@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # SPDX-License-Identifier: MIT
+# Assisted-by: Claude:claude-sonnet-5
 
 # Requires sudo for network monitoring
-# TODO: this new version needs tested and reviewed
 
 set -uo pipefail
 
