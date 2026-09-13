@@ -13,6 +13,7 @@
 # - 2026.08.16: Add support for untrusted environments + utility installation
 # - 2026.08.29: Pin python toolchain via uv, exit non-zero on failure
 # - 2026.09.12: Add the Ubuntu 24.04+ AppArmor/bwrap userns fix
+# - 2026.09.13: Load bwrap profile via apparmor_parser -r
 
 set -euo pipefail
 
@@ -122,8 +123,8 @@ profile bwrap /usr/bin/bwrap flags=(unconfined) {
   include if exists <local/bwrap>
 }
 EOF
-    sudo systemctl reload apparmor
-    printf "[*] Installed %s, reloaded AppArmor (bwrap can now create user namespaces)\n" "${BWRAP_PROFILE}"
+    sudo apparmor_parser -r "${BWRAP_PROFILE}"
+    printf "[*] Installed %s, loaded into the kernel via apparmor_parser (bwrap can now create user namespaces)\n" "${BWRAP_PROFILE}"
 }
 
 install_claude_settings() {
