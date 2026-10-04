@@ -1,9 +1,11 @@
 {
-  "model": "claude-sonnet-5",
+  "model": "claude-sonnet-5-5",
   "requiredMinimumVersion": "2.1.263",
   "minimumVersion": "2.1.263",
   "effortLevel": "high",
   "cleanupPeriodDays": 7,
+
+  "disableRemoteControl": false,
 
   "allowManagedPermissionRulesOnly": true,
   "allowManagedHooksOnly": true,
@@ -12,19 +14,19 @@
   "strictKnownMarketplaces": [],
   "disableCommandPluginSources": true,
   "disableSideloadFlags": true,
-  "strictPluginOnlyCustomization": {
-    "agents": true,
-    "hooks": true,
-    "mcp": true,
-    "skills": true
-  },
+  "strictPluginOnlyCustomization": [
+    "agents",
+    "hooks",
+    "mcp",
+    "skills"
+  ],
 
   "enableAllProjectMcpServers": false,
   "enabledMcpjsonServers": [],
   "allowedMcpServers": [],
   "disableSkillShellExecution": true,
   "disableBundledSkills": false,
-  "crossSessionInbound": "reject",
+  "crossSessionInbound": "accept",
   "isolatePeerMachines": true,
   "respectGitignore": true,
   "allowedHttpHookUrls": [],
