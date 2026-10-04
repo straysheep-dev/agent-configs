@@ -147,6 +147,8 @@ install_claude_settings() {
         "${MANAGED_PATH}"
 }
 
+# TODO: a function to install the Anthropic apt / dnf package repo and key and install Claude Code.
+
 allow_bwrap_userns
 install_claude_settings
 

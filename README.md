@@ -12,6 +12,9 @@ The actual boundary is the instance where the harness lives, in many cases a VM.
 
 This also covers agent authentication. Assume your agent's authentication token can be stolen. Monitor and rotate; additionally the type of authentication that exists within the harness environment should also be limited (e.g. no browser sessions to your Claude web account).
 
+> [!WARNING]
+> `WebFetch(domain:...)` allow rules are merged into the sandbox's network allowlist, so granting WebFetch access to a host also opens the Bash sandbox to it — see [anthropics/claude-code#31296](https://github.com/anthropics/claude-code/issues/31296) (closed as not planned; this is intended, documented behavior, not a bug).
+
 ## What's Here
 
 | File / Directory | Purpose |
