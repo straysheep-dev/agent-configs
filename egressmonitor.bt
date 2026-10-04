@@ -1,0 +1,339 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: Apache-2.0 or MIT
+# Assisted-by: Claude:claude-sonnet-5
+
+# egressmonitor.bt  Trace TCP connect()s and UDP/ICMP sends, with a resolved
+#                destination hostname appended.
+#
+# Despite the .bt extension (kept since this is still, in spirit, the
+# bpftrace tool), this is a bash script: bpftrace has no network I/O, so it
+# can't do the DNS resolution itself. This embeds the bpftrace program
+# below as a heredoc, runs it, and pipes its output through resolve() to
+# fill in a HOST column before printing.
+#
+# Requires sudo for bpftrace itself: run as `sudo bash egressmonitor.bt` (or
+# `sudo ./egressmonitor.bt` if executable).
+#
+# Reverse lookups are cached per destination IP for the life of the process,
+# so LOOKUP_TIMEOUT is only ever paid once per unique address. Private/
+# loopback/link-local ranges are skipped outright: there's rarely a useful
+# PTR record for them, and skipping them also avoids re-tracing the lookup's
+# own DNS traffic to a LAN resolver (e.g. 127.0.0.53) as a fresh event.
+#
+# DADDR/DPORT are pulled by counting from the *end* of each line (NF-1, NF),
+# not a fixed column index - COMM/PCOMM/GCOMM are free-form kernel thread
+# names and routinely contain spaces (e.g. Firefox's "Socket Thread"), which
+# shifts every fixed-index field after them. SADDR/SPORT/DADDR/DPORT never
+# contain spaces themselves, so counting from the end is safe regardless of
+# how many words precede them.
+#
+# Rows where COMM is exactly "getent" or "timeout" are dropped: those are
+# this script's own reverse-lookup subprocesses, which the bpftrace program
+# below would otherwise trace like any other UDP send.
+
+set -uo pipefail
+
+BPFTRACE_BIN="${BPFTRACE_BIN:-bpftrace}"
+LOOKUP_TIMEOUT="${LOOKUP_TIMEOUT:-1}"
+
+BPFTRACE_PROGRAM="$(mktemp --suffix=.bt)"
+trap 'rm -f "$BPFTRACE_PROGRAM"' EXIT
+
+cat > "$BPFTRACE_PROGRAM" <<'BPFTRACE_EOF'
+// egressmonitor.bt  Trace TCP connect()s, and UDP/ICMP packet sends.
+//                For Linux, uses bpftrace and eBPF.
+//
+// TCP is traced via tcp_connect() - one event per connection attempt, even
+// if it ultimately fails. UDP and ICMP are traced per-packet, on their
+// actual send path, since most UDP traffic (DNS included) never calls
+// connect() and most `ping` implementations use a raw socket without
+// connect() either:
+//   - UDP:  udp_sendmsg() / udpv6_sendmsg()
+//   - ICMP: raw_sendmsg() / rawv6_sendmsg() (traditional raw-socket ping,
+//           the default unless net.ipv4.ping_group_range permits the
+//           caller's group), plus ping_v4_sendmsg() / ping_v6_sendmsg()
+//           (Linux "ping sockets", used when that sysctl does allow it).
+//           sk_protocol tells ICMP apart from other raw-socket traffic;
+//           anything else on the raw path prints as OTHER, since a
+//           non-ICMP raw socket is itself worth a second look.
+//
+// Because UDP/ICMP are now traced per-send rather than per-connect, a
+// chatty UDP app will produce one row per packet, not one row total - this
+// is deliberately noisier than the TCP rows.
+//
+// This uses dynamic tracing of kernel functions, and will need to be updated
+// to match kernel changes.
+//
+// Each row also walks up to two levels of process ancestry (PCOMM, GCOMM).
+// COMM alone is often a wrapper or interpreter (e.g. "python", "http")
+// rather than the process a human would recognize (e.g. "firefox").
+//
+// This is not a zero-cost tool the way a pure connect()-tracer is: it now
+// runs on every UDP/ICMP send, not just once per socket.
+//
+// Adapted from tcpconnect.bt (the bpftrace port of the bcc tool of the same
+// name), extended to cover UDP/ICMP sends and process ancestry.
+//
+// tcpconnect.bt: Copyright (c) 2018 Dale Hamel. 23-Nov-2018 created this.
+// Released under the Apache-2.0 License.
+// https://github.com/bpftrace/bpftrace/blob/master/LICENSE
+
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/sched.h>
+#include <linux/socket.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+#include <net/sock.h>
+#else
+// BTF provides the types, we just need to define AF_INET/AF_INET6 and the
+// IPPROTO_* values used to pick ICMP out of the raw-socket send path. These
+// are Linux ABI defines, and are not architecture-specific: this lets
+// egressmonitor.bt work without glibc/kernel headers.
+#define AF_INET         2 /* IPv4 */
+#define AF_INET6       10 /* IPv6 */
+#define IPPROTO_ICMP    1
+#define IPPROTO_ICMPV6 58
+#endif
+
+BEGIN
+{
+  printf("Tracing TCP connects and UDP/ICMP sends. Hit Ctrl-C to end.\n");
+  printf("%-8s %-5s %-8s %-16s %-16s %-16s ", "TIME", "PROTO", "PID", "COMM", "PCOMM", "GCOMM");
+  printf("%-39s %-6s %-39s %-6s\n", "SADDR", "SPORT", "DADDR", "DPORT");
+}
+
+kprobe:tcp_connect
+{
+  let $daddr;
+  let $saddr;
+  $sk = (struct sock *)arg0;
+  $inet_family = $sk.__sk_common.skc_family;
+
+  if ($inet_family == AF_INET || $inet_family == AF_INET6) {
+    if ($inet_family == AF_INET) {
+      $daddr = ntop($sk.__sk_common.skc_daddr);
+      $saddr = ntop($sk.__sk_common.skc_rcv_saddr);
+    } else {
+      $daddr = ntop($sk.__sk_common.skc_v6_daddr.in6_u.u6_addr8);
+      $saddr = ntop($sk.__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr8);
+    }
+    $lport = $sk.__sk_common.skc_num;
+    $dport = $sk.__sk_common.skc_dport;
+
+    // Destination port is big endian, it must be flipped
+    $dport = bswap($dport);
+
+    // comm is per-thread (e.g. Firefox renames a worker to "Socket
+    // Thread"); group_leader.comm is the main thread, which keeps the
+    // exec'd binary's name. Ancestry is walked from the same leader so
+    // PCOMM/GCOMM are the process's real parents, not a thread's.
+    $task = (struct task_struct *)curtask;
+    $gl = $task.group_leader;
+    $proc_comm = str($gl.comm);
+    $pcomm = str($gl.real_parent.comm);
+    $gcomm = str($gl.real_parent.real_parent.comm);
+
+    time("%H:%M:%S ");
+    printf("%-5s %-8d %-16s %-16s %-16s ", "TCP", pid, $proc_comm, $pcomm, $gcomm);
+    printf("%-39s %-6d %-39s %-6d\n", $saddr, $lport, $daddr, $dport);
+  }
+}
+
+kprobe:udp_sendmsg,
+kprobe:udpv6_sendmsg
+{
+  let $daddr;
+  let $saddr;
+  let $dport;
+  $sk = (struct sock *)arg0;
+  $msg = (struct msghdr *)arg1;
+  $inet_family = $sk.__sk_common.skc_family;
+
+  if ($inet_family == AF_INET || $inet_family == AF_INET6) {
+    if ($inet_family == AF_INET) {
+      $saddr = ntop($sk.__sk_common.skc_rcv_saddr);
+      // sendto()/sendmsg() with an explicit destination carries it in
+      // msg_name; a pre-connect()ed socket leaves msg_name null and the
+      // destination is whatever the socket cached at connect() time.
+      if ($msg.msg_name != 0) {
+        $uaddr = (struct sockaddr_in *)$msg.msg_name;
+        $daddr = ntop($uaddr.sin_addr.s_addr);
+        $dport = bswap($uaddr.sin_port);
+      } else {
+        $daddr = ntop($sk.__sk_common.skc_daddr);
+        $dport = bswap($sk.__sk_common.skc_dport);
+      }
+    } else {
+      $saddr = ntop($sk.__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr8);
+      if ($msg.msg_name != 0) {
+        $uaddr6 = (struct sockaddr_in6 *)$msg.msg_name;
+        $daddr = ntop($uaddr6.sin6_addr.in6_u.u6_addr8);
+        $dport = bswap($uaddr6.sin6_port);
+      } else {
+        $daddr = ntop($sk.__sk_common.skc_v6_daddr.in6_u.u6_addr8);
+        $dport = bswap($sk.__sk_common.skc_dport);
+      }
+    }
+    $lport = $sk.__sk_common.skc_num;
+
+    // comm is per-thread (e.g. Firefox renames a worker to "Socket
+    // Thread"); group_leader.comm is the main thread, which keeps the
+    // exec'd binary's name. Ancestry is walked from the same leader so
+    // PCOMM/GCOMM are the process's real parents, not a thread's.
+    $task = (struct task_struct *)curtask;
+    $gl = $task.group_leader;
+    $proc_comm = str($gl.comm);
+    $pcomm = str($gl.real_parent.comm);
+    $gcomm = str($gl.real_parent.real_parent.comm);
+
+    time("%H:%M:%S ");
+    printf("%-5s %-8d %-16s %-16s %-16s ", "UDP", pid, $proc_comm, $pcomm, $gcomm);
+    printf("%-39s %-6d %-39s %-6d\n", $saddr, $lport, $daddr, $dport);
+  }
+}
+
+kprobe:raw_sendmsg,
+kprobe:ping_v4_sendmsg
+{
+  let $daddr;
+  let $saddr;
+  let $dport;
+  let $proto;
+  $sk = (struct sock *)arg0;
+  $msg = (struct msghdr *)arg1;
+
+  if ($sk.__sk_common.skc_family == AF_INET) {
+    if ($sk.sk_protocol == IPPROTO_ICMP) {
+      $proto = "ICMP";
+    } else {
+      $proto = "OTHER";
+    }
+    $saddr = ntop($sk.__sk_common.skc_rcv_saddr);
+    if ($msg.msg_name != 0) {
+      $uaddr = (struct sockaddr_in *)$msg.msg_name;
+      $daddr = ntop($uaddr.sin_addr.s_addr);
+      $dport = bswap($uaddr.sin_port);
+    } else {
+      $daddr = ntop($sk.__sk_common.skc_daddr);
+      $dport = bswap($sk.__sk_common.skc_dport);
+    }
+    $lport = $sk.__sk_common.skc_num;
+
+    // comm is per-thread (e.g. Firefox renames a worker to "Socket
+    // Thread"); group_leader.comm is the main thread, which keeps the
+    // exec'd binary's name. Ancestry is walked from the same leader so
+    // PCOMM/GCOMM are the process's real parents, not a thread's.
+    $task = (struct task_struct *)curtask;
+    $gl = $task.group_leader;
+    $proc_comm = str($gl.comm);
+    $pcomm = str($gl.real_parent.comm);
+    $gcomm = str($gl.real_parent.real_parent.comm);
+
+    time("%H:%M:%S ");
+    printf("%-5s %-8d %-16s %-16s %-16s ", $proto, pid, $proc_comm, $pcomm, $gcomm);
+    printf("%-39s %-6d %-39s %-6d\n", $saddr, $lport, $daddr, $dport);
+  }
+}
+
+kprobe:rawv6_sendmsg,
+kprobe:ping_v6_sendmsg
+{
+  let $daddr;
+  let $saddr;
+  let $dport;
+  let $proto;
+  $sk = (struct sock *)arg0;
+  $msg = (struct msghdr *)arg1;
+
+  if ($sk.__sk_common.skc_family == AF_INET6) {
+    if ($sk.sk_protocol == IPPROTO_ICMPV6) {
+      $proto = "ICMP";
+    } else {
+      $proto = "OTHER";
+    }
+    $saddr = ntop($sk.__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr8);
+    if ($msg.msg_name != 0) {
+      $uaddr6 = (struct sockaddr_in6 *)$msg.msg_name;
+      $daddr = ntop($uaddr6.sin6_addr.in6_u.u6_addr8);
+      $dport = bswap($uaddr6.sin6_port);
+    } else {
+      $daddr = ntop($sk.__sk_common.skc_v6_daddr.in6_u.u6_addr8);
+      $dport = bswap($sk.__sk_common.skc_dport);
+    }
+    $lport = $sk.__sk_common.skc_num;
+
+    // comm is per-thread (e.g. Firefox renames a worker to "Socket
+    // Thread"); group_leader.comm is the main thread, which keeps the
+    // exec'd binary's name. Ancestry is walked from the same leader so
+    // PCOMM/GCOMM are the process's real parents, not a thread's.
+    $task = (struct task_struct *)curtask;
+    $gl = $task.group_leader;
+    $proc_comm = str($gl.comm);
+    $pcomm = str($gl.real_parent.comm);
+    $gcomm = str($gl.real_parent.real_parent.comm);
+
+    time("%H:%M:%S ");
+    printf("%-5s %-8d %-16s %-16s %-16s ", $proto, pid, $proc_comm, $pcomm, $gcomm);
+    printf("%-39s %-6d %-39s %-6d\n", $saddr, $lport, $daddr, $dport);
+  }
+}
+BPFTRACE_EOF
+
+declare -A dns_cache
+
+is_unresolvable() {
+  local ip="$1"
+  case "$ip" in
+    127.*|10.*|192.168.*|169.254.*|::1|fe80:*|fc*|fd*)
+      return 0
+      ;;
+  esac
+  [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+}
+
+resolve() {
+  local ip="$1" host
+
+  if [[ -n "${dns_cache[$ip]+set}" ]]; then
+    printf '%s\n' "${dns_cache[$ip]}"
+    return
+  fi
+
+  if is_unresolvable "$ip"; then
+    dns_cache["$ip"]="-"
+    printf '%s\n' "-"
+    return
+  fi
+
+  host="$(timeout "$LOOKUP_TIMEOUT" getent hosts "$ip" 2>/dev/null | awk '{print $2; exit}')"
+  host="${host:--}"
+  dns_cache["$ip"]="$host"
+  printf '%s\n' "$host"
+}
+
+"$BPFTRACE_BIN" -B line "$BPFTRACE_PROGRAM" | while IFS= read -r line; do
+  case "$line" in
+    Tracing*)
+      printf '%s\n' "$line"
+      continue
+      ;;
+    TIME*)
+      printf '%s %s\n' "$line" "HOST"
+      continue
+      ;;
+  esac
+
+  comm_field="$(awk '{print $4}' <<<"$line")"
+  if [[ "$comm_field" == "getent" || "$comm_field" == "timeout" ]]; then
+    continue
+  fi
+
+  daddr="$(awk '{print $(NF-1)}' <<<"$line")"
+  if [[ -z "$daddr" ]]; then
+    printf '%s\n' "$line"
+    continue
+  fi
+
+  printf '%s %s\n' "$line" "$(resolve "$daddr")"
+done
